@@ -2395,8 +2395,9 @@ static void ggml_vk_ctx_end(vk_context * ctx) {
     if (ctx->s == nullptr) {
         return;
     }
-
-    ctx->s->buffer.end();
+    if (ctx->s->buffer) {
+        ctx->s->buffer.end();
+    }
     ctx->s = nullptr;
 }
 
@@ -6106,16 +6107,17 @@ GGML_CALL static void ggml_backend_vk_set_tensor_async(ggml_backend_t backend, g
     GGML_ASSERT((tensor->buffer->buft == ggml_backend_vk_get_default_buffer_type(backend) || tensor->buffer->buft == ggml_backend_vk_host_buffer_type()) && "unsupported buffer type");
 
     ggml_tensor_extra_gpu * extra = (ggml_tensor_extra_gpu *) tensor->extra;
-
+    bool sync_staging = false;
     if (ctx->transfer_ctx == nullptr) {
         // Initialize new transfer context
         ctx->transfer_ctx = ggml_vk_create_context(ctx, ctx->device->transfer_queue);
         ggml_vk_ctx_begin(ctx->device, ctx->transfer_ctx);
+        sync_staging = true;
     }
 
     vk_buffer buf = extra->buffer_gpu.lock();
 
-    ggml_vk_buffer_write_async(ctx->transfer_ctx, buf, extra->offset + tensor->view_offs + offset, data, size, ctx->staging, ctx->staging_offset);
+    ggml_vk_buffer_write_async(ctx->transfer_ctx, buf, extra->offset + tensor->view_offs + offset, data, size, ctx->staging, ctx->staging_offset, sync_staging); // FIXME-sync-staging
 }
 
 GGML_CALL static void ggml_backend_vk_get_tensor_async(ggml_backend_t backend, const ggml_tensor * tensor, void * data, size_t offset, size_t size) {
@@ -6136,7 +6138,7 @@ GGML_CALL static void ggml_backend_vk_get_tensor_async(ggml_backend_t backend, c
     ggml_vk_buffer_read_async(ctx->transfer_ctx, buf, extra->offset + tensor->view_offs + offset, data, size, ctx->staging, ctx->staging_offset);
 }
 
-GGML_CALL static bool ggml_backend_vk_cpy_tensor_async(ggml_backend_t backend, const ggml_tensor * src, ggml_tensor * dst) {
+GGML_CALL static bool ggml_backend_vk_cpy_tensor_async(ggml_backend_t backend, ggml_backend_t backend_dst, const ggml_tensor * src, ggml_tensor * dst) {
     VK_LOG_DEBUG("ggml_backend_vk_cpy_tensor_async()");
     ggml_backend_vk_context * ctx = (ggml_backend_vk_context *)backend->context;
     if ((dst->buffer->buft == ggml_backend_vk_get_default_buffer_type(backend) || dst->buffer->buft == ggml_backend_vk_host_buffer_type()) && ggml_backend_buffer_is_vk(src->buffer)) {
@@ -6370,10 +6372,10 @@ static ggml_backend_i ggml_backend_vk_interface = {
     /* .get_name                = */ ggml_backend_vk_name,
     /* .free                    = */ ggml_backend_vk_free,
     /* .get_default_buffer_type = */ ggml_backend_vk_get_default_buffer_type,
-    /* .set_tensor_async        = */ NULL,  // ggml_backend_vk_set_tensor_async,
-    /* .get_tensor_async        = */ NULL,  // ggml_backend_vk_get_tensor_async,
-    /* .cpy_tensor_async        = */ NULL,  // ggml_backend_vk_cpy_tensor_async,
-    /* .synchronize             = */ NULL,  // ggml_backend_vk_synchronize,
+    /* .set_tensor_async        = */ ggml_backend_vk_set_tensor_async,
+    /* .get_tensor_async        = */ ggml_backend_vk_get_tensor_async,
+    /* .cpy_tensor_async        = */ ggml_backend_vk_cpy_tensor_async,
+    /* .synchronize             = */ ggml_backend_vk_synchronize,
     /* .graph_plan_create       = */ NULL,
     /* .graph_plan_free         = */ NULL,
     /* .graph_plan_update       = */ NULL,
