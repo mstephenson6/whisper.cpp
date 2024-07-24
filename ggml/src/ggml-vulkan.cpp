@@ -2395,8 +2395,11 @@ static void ggml_vk_ctx_end(vk_context * ctx) {
     if (ctx->s == nullptr) {
         return;
     }
-    if (ctx->s->buffer) {
+    if (ctx->s->buffer != nullptr) {
         ctx->s->buffer.end();
+    }
+    else {
+        VK_LOG_DEBUG("    ctx->s->buffer was null");
     }
     ctx->s = nullptr;
 }

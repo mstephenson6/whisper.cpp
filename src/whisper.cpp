@@ -53,6 +53,7 @@
 #include <random>
 #include <functional>
 #include <codecvt>
+#include <iostream>
 
 #if defined(_MSC_VER)
 #pragma warning(disable: 4244 4267) // possible loss of data
@@ -2826,6 +2827,12 @@ static bool whisper_decode_internal(
         // set the inputs
         {
             struct ggml_tensor * embd = ggml_graph_get_tensor(gf, "embd");
+            int64_t n = ggml_nelements(embd);
+            int d = ggml_n_dims(embd);
+            int32_t v = ggml_get_i32_1d(embd, 0);
+            std::cerr << "embd: n=" << n << ", d=" << d << std::endl;
+            std::cerr << "embd: v=" << v << std::endl;
+            
             ggml_backend_tensor_set(embd, batch.token, 0, n_tokens*ggml_element_size(embd));
         }
 
@@ -5761,11 +5768,17 @@ int whisper_full_with_state(
 
                 whisper_batch_prep_legacy(state->batch, prompt.data(), prompt.size(), 0, 0);
 
+                for (const float &v : state->logits) {
+                    std::cerr << "in: " << v << std::endl;
+                }
                 if (!whisper_decode_internal(*ctx, *state, state->batch, params.n_threads, false, params.abort_callback, params.abort_callback_user_data)) {
                     WHISPER_LOG_ERROR("%s: failed to decode\n", __func__);
                     return -7;
                 }
-
+                for (const float &v : state->logits) {
+                    std::cerr << "out: " << v << std::endl;
+                }
+                
                 {
                     const int64_t t_start_sample_us = ggml_time_us();
 
